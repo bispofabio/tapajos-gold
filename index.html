@@ -481,15 +481,15 @@
           <div id="metric-processos-total" class="metric-value">—</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Total comercializado</div>
+          <div class="metric-label">Comercializado em PLGs</div>
           <div id="metric-comercializado" class="metric-value">—</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Processos com CFEM</div>
+          <div class="metric-label">PLGs com produção</div>
           <div id="metric-tem-cefem" class="metric-value">—</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">PM com CFEM na APA</div>
+          <div class="metric-label">PLGs com produção na APA do Tapajós</div>
           <div id="metric-apa" class="metric-value">—</div>
         </div>
       </div>
@@ -514,7 +514,11 @@
         </div>
         <div class="legend-item">
           <span class="legend-swatch" style="background:#d84b4b;"></span>
-          <span>PLGs com CFEM</span>
+          <span>PLGs com produção</span>
+        </div>
+      <div class="legend-item">
+          <span class="legend-swatch" style="background:#d4da32;"></span>
+          <span>Garimpo Consolidado</span>
         </div>
       </div>
     </div>
@@ -551,6 +555,14 @@
           </label>
           <span id="status-layer-ti" class="layer-status">—</span>
         </div>
+
+        <div class="layer-toggle">
+          <label for="toggle-layer-garimpo">
+            <input type="checkbox" id="toggle-layer-garimpo" checked />
+            <span>Garimpo consolidado</span>
+          </label>
+          <span id="status-layer-garimpo" class="layer-status">—</span>
+        </div>
       </div>
     </div>
   </div>
@@ -564,16 +576,18 @@
 
     const CONTEXT_LAYERS = {
       apaTapajos: ['APA_TAPAJOS'],
-      terrasIndigenas: ['tis-amzlegal']
+      terrasIndigenas: ['tis-amzlegal'],
+      garimpoDissolved: ['garimpo-dissolved']
     };
 
     const TILESET_FIELDS = {
       id: 'ID_x',
       processo: 'PROCESSO',
       nome: 'NOME_x',
+      comprador: 'comprador',
       cnpj: 'CPF_CNPJ',
       municipio: 'municipios',
-      uf: 'UF',
+      uf: 'UF_x',
       valorCefem: 'ValorRecolhido',
       quantidade: 'QuantidadeComercializada',
       comercializado: 'comercializado',
@@ -590,9 +604,10 @@
       id: 'ID_x',
       processo: 'PROCESSO',
       nome: 'NOME_x',
+      comprador: 'comprador',
       cnpj: 'CPF_CNPJ',
       municipio: 'municipios',
-      uf: 'UF',
+      uf: 'UF_x',
       valorCefem: 'ValorRecolhido',
       quantidade: 'QuantidadeComercializada',
       comercializado: 'comercializado',
@@ -633,13 +648,6 @@
     const $ = (id) => document.getElementById(id);
     const safe = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
     const fmtInt = (v) => Number(v || 0).toLocaleString('pt-BR');
-
-    const fmtMoney = (v) =>
-      Number(v || 0).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-        maximumFractionDigits: 0
-      });
 
     const fmtQty = (v) =>
       Number(v || 0).toLocaleString('pt-BR', {
@@ -728,6 +736,7 @@
 
       const rows = [
         ['Nome', getVal(props, 'nome')],
+        ['Comprador', getVal(props, 'comprador')],
         ['CPF/CNPJ', getVal(props, 'cnpj')],
         ['Processo', getVal(props, 'processo')],
         ['Município', getVal(props, 'municipio')],
@@ -735,16 +744,10 @@
         ['Fase', getVal(props, 'fase')],
         ['Área (ha)', toNumber(getVal(props, 'areaHa')) ? fmtQty(toNumber(getVal(props, 'areaHa'))) : '—'],
         ['Último evento', getVal(props, 'ultEvento')],
-        ['Valor recolhido (CFEM)', toNumber(getVal(props, 'valorCefem')) ? fmtMoney(toNumber(getVal(props, 'valorCefem'))) : '—'],
-        ['Quantidade comercializada', toNumber(getVal(props, 'quantidade')) ? fmtQty(toNumber(getVal(props, 'quantidade'))) : '—'],
         ['Total comercializado', toNumber(getVal(props, 'comercializado')) ? fmtQty(toNumber(getVal(props, 'comercializado'))) : '—'],
         ['Tem CFEM', yesNo(getVal(props, 'temCefem'))],
         ['Na APA do Tapajós', yesNo(getVal(props, 'apaTapajos'))],
-        ['Investigado', safe(getVal(props, 'investigado'))],
-        ['Operação Sisaque', yesNo(getVal(props, 'sisaque'))],
-        ['Alerta TCU', yesNo(getVal(props, 'alertaTcu'))],
-        ['Substâncias', getVal(props, 'substancias')],
-        ['Unidade de medida', getVal(props, 'unidade')]
+        ['Substâncias', getVal(props, 'substancias')]
       ]
         .map(([label, value]) => `<tr><th>${label}</th><td>${safe(value)}</td></tr>`)
         .join('');
@@ -758,7 +761,7 @@
         if (!res.ok) throw new Error(`Falha ao carregar métricas (${res.status})`);
         const m = await res.json();
 
-        setMetric('metric-processos-total', fmtInt(m.processos_minerarios_total || 0));
+        setMetric('metric-processos-total', fmtInt(18714));
         setMetric('metric-comercializado', fmtQty(m.soma_comercializado || 0));
         setMetric('metric-tem-cefem', fmtInt(m.plgs_com_cefem || 0));
         setMetric('metric-apa', fmtInt(m.plgs_com_cefem_na_apa || 0));
@@ -827,9 +830,11 @@
     function updateContextLayerStatus() {
       const apaFound = (CONTEXT_LAYERS.apaTapajos || []).filter(id => layerExists(id)).length;
       const tiFound = (CONTEXT_LAYERS.terrasIndigenas || []).filter(id => layerExists(id)).length;
+      const garimpoFound = (CONTEXT_LAYERS.garimpoDissolved || []).filter(id => layerExists(id)).length;
 
-      if ($('status-layer-apa')) $('status-layer-apa').textContent = apaFound ? 'ok' : 'não encontrada';
-      if ($('status-layer-ti')) $('status-layer-ti').textContent = tiFound ? 'ok' : 'não encontrada';
+      if ($('status-layer-apa')) $('status-layer-apa').textContent = apaFound ? '' : 'não encontrada';
+      if ($('status-layer-ti')) $('status-layer-ti').textContent = tiFound ? '' : 'não encontrada';
+      if ($('status-layer-garimpo')) $('status-layer-garimpo').textContent = garimpoFound ? '' : 'não encontrado';
     }
 
     let sourceLayer = null;
@@ -857,7 +862,8 @@
       antialias: true,
       projection: 'mercator',
       renderWorldCopies: false,
-      maxZoom: 14
+      maxZoom: 12.5,
+      minZoom: 4.5
     });
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
@@ -913,11 +919,6 @@
       return uniqueBy(feats, f => getFeatureKey(f.properties || {}));
     }
 
-    function searchLoadedFeatures(term, fieldMode) {
-      const feats = collectLoadedFeatures();
-      return feats.filter(f => matchesQuery(f.properties || {}, term, fieldMode)).slice(0, 50);
-    }
-
     function searchGlobalIndex(term, fieldMode) {
       if (!Array.isArray(globalIndex) || !globalIndex.length) return [];
       return globalIndex.filter(item => matchesQuery(item, term, fieldMode)).slice(0, 50);
@@ -945,29 +946,23 @@
       const processo = normalizeText(getVal(props, 'processo'));
       const municipio = normalizeText(getVal(props, 'municipio'));
       const substancias = normalizeText(getVal(props, 'substancias'));
+      const comprador = normalizeText(getVal(props, 'comprador'));
       const searchText = normalizeText(getVal(props, 'searchText'));
       const termText = normalizeText(term);
       const termDigits = normalizeCNPJ(term);
 
       if (!termText && !termDigits) return false;
 
-      if (fieldMode === 'nome') {
-        return nome.includes(termText);
-      }
-
-      if (fieldMode === 'cnpj') {
-        return termDigits ? cnpjDigits.includes(termDigits) : cnpjText.includes(termText);
-      }
-
-      if (fieldMode === 'processo') {
-        return processo.includes(termText);
-      }
+      if (fieldMode === 'nome') return nome.includes(termText);
+      if (fieldMode === 'cnpj') return termDigits ? cnpjDigits.includes(termDigits) : cnpjText.includes(termText);
+      if (fieldMode === 'processo') return processo.includes(termText);
 
       return (
         nome.includes(termText) ||
         processo.includes(termText) ||
         municipio.includes(termText) ||
         substancias.includes(termText) ||
+        comprador.includes(termText) ||
         searchText.includes(termText) ||
         (termDigits && cnpjDigits.includes(termDigits)) ||
         cnpjText.includes(termText)
@@ -1005,15 +1000,9 @@
     }
 
     function getHighlightColors() {
-      if (filterState.sisaque) {
-        return { fill: '#f2cf63', line: '#e2872b', hover: '#c96a12' };
-      }
-      if (filterState.pmApaTapajos) {
-        return { fill: '#eadf9f', line: '#c7a93f', hover: '#8b7426' };
-      }
-      if (filterState.temCefem) {
-        return { fill: '#d84b4b', line: '#b33434', hover: '#8f2424' };
-      }
+      if (filterState.sisaque) return { fill: '#f2cf63', line: '#e2872b', hover: '#c96a12' };
+      if (filterState.pmApaTapajos) return { fill: '#eadf9f', line: '#c7a93f', hover: '#8b7426' };
+      if (filterState.temCefem) return { fill: '#d84b4b', line: '#b33434', hover: '#8f2424' };
       return { fill: '#ddd7af', line: '#bba24f', hover: '#8b7426' };
     }
 
@@ -1146,7 +1135,7 @@
             left: getLeftPadding()
           },
           duration: 1800,
-          maxZoom: 14,
+          maxZoom: 12.5,
           pitch: SEARCH_CAMERA.pitch,
           bearing: SEARCH_CAMERA.bearing,
           essential: true
@@ -1194,7 +1183,7 @@
       if (lng != null && lat != null) {
         map.flyTo({
           center: [Number(lng), Number(lat)],
-          zoom: 13,
+          zoom: 12,
           pitch: SEARCH_CAMERA.pitch,
           bearing: SEARCH_CAMERA.bearing,
           duration: 1800,
@@ -1240,7 +1229,7 @@
           if (lng != null && lat != null) {
             map.flyTo({
               center: [Number(lng), Number(lat)],
-              zoom: 13,
+              zoom: 12,
               pitch: SEARCH_CAMERA.pitch,
               bearing: SEARCH_CAMERA.bearing,
               duration: 1800,
@@ -1424,6 +1413,7 @@
 
         toggleLayerGroup(CONTEXT_LAYERS.apaTapajos, $('toggle-layer-apa').checked);
         toggleLayerGroup(CONTEXT_LAYERS.terrasIndigenas, $('toggle-layer-ti').checked);
+        toggleLayerGroup(CONTEXT_LAYERS.garimpoDissolved, $('toggle-layer-garimpo').checked);
 
         playIntroCamera();
       } catch (err) {
@@ -1435,6 +1425,7 @@
       updateContextLayerStatus();
       toggleLayerGroup(CONTEXT_LAYERS.apaTapajos, $('toggle-layer-apa')?.checked ?? true);
       toggleLayerGroup(CONTEXT_LAYERS.terrasIndigenas, $('toggle-layer-ti')?.checked ?? true);
+      toggleLayerGroup(CONTEXT_LAYERS.garimpoDissolved, $('toggle-layer-garimpo')?.checked ?? true);
     });
 
     map.on('error', (e) => console.error('Mapbox error:', e?.error || e));
@@ -1455,9 +1446,7 @@
 
     $('toggle-layer-plgs-geral').addEventListener('change', (e) => {
       filterState.baseVisible = e.target.checked;
-      if (!e.target.checked) {
-        hoverKey = null;
-      }
+      if (!e.target.checked) hoverKey = null;
       updateToggleUI();
       applyMapState();
     });
@@ -1476,6 +1465,11 @@
     $('toggle-layer-ti').addEventListener('change', (e) => {
       const found = toggleLayerGroup(CONTEXT_LAYERS.terrasIndigenas, e.target.checked);
       $('status-layer-ti').textContent = found ? 'ok' : 'não encontrada';
+    });
+
+    $('toggle-layer-garimpo').addEventListener('change', (e) => {
+      const found = toggleLayerGroup(CONTEXT_LAYERS.garimpoDissolved, e.target.checked);
+      $('status-layer-garimpo').textContent = found ? 'ok' : 'não encontrado';
     });
 
     $('search-field').addEventListener('change', () => {
