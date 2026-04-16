@@ -1,9 +1,9 @@
 {
-  "processos_minerarios_total": 18714,
+  "processos_minerarios_total": 17769,
   "plgs": 1523,
   "soma_ValorRecolhido": 154872203.88000003,
   "soma_comercializado": 10324813592.0,
   "soma_AREA_HA": 831714.02,
   "plgs_com_cefem": 540,
-  "plgs_com_cefem_na_apa": 0
+  "plgs_com_cefem_na_apa": 203
 }
