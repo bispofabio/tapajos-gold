@@ -477,19 +477,15 @@
       <div class="block-title">Panorama das PLGs</div>
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-label">PLGs</div>
-          <div id="metric-processos" class="metric-value">—</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Soma declarada em CFEM</div>
-          <div id="metric-cefem-sum" class="metric-value">—</div>
+          <div class="metric-label">Processos minerários</div>
+          <div id="metric-processos-total" class="metric-value">—</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Total comercializado</div>
           <div id="metric-comercializado" class="metric-value">—</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Com CFEM 2022–2026</div>
+          <div class="metric-label">Processos com CFEM</div>
           <div id="metric-tem-cefem" class="metric-value">—</div>
         </div>
         <div class="metric-card">
@@ -584,7 +580,7 @@
       unidade: 'UnidadeDeMedida',
       substancias: 'substancias',
       temCefem: 'tem_cefem',
-      apaTapajos: 'na_apa_tapajos',
+      apaTapajos: 'APA do Tapajós',
       investigado: 'INVESTIGADO',
       sisaque: 'SISAQUE',
       alertaTcu: 'alerta_tcu'
@@ -603,11 +599,16 @@
       unidade: 'UnidadeDeMedida',
       substancias: 'substancias',
       temCefem: 'tem_cefem',
-      apaTapajos: 'na_apa_tapajos',
+      apaTapajos: 'APA do Tapajós',
       investigado: 'INVESTIGADO',
       sisaque: 'SISAQUE',
       alertaTcu: 'alerta_tcu',
-      searchText: 'searchText'
+      fase: 'FASE',
+      areaHa: 'AREA_HA',
+      ultEvento: 'ULT_EVENTO',
+      searchText: 'searchText',
+      lng: 'lng',
+      lat: 'lat'
     };
 
     const INTRO_CAMERA = {
@@ -731,6 +732,9 @@
         ['Processo', getVal(props, 'processo')],
         ['Município', getVal(props, 'municipio')],
         ['UF', getVal(props, 'uf')],
+        ['Fase', getVal(props, 'fase')],
+        ['Área (ha)', toNumber(getVal(props, 'areaHa')) ? fmtQty(toNumber(getVal(props, 'areaHa'))) : '—'],
+        ['Último evento', getVal(props, 'ultEvento')],
         ['Valor recolhido (CFEM)', toNumber(getVal(props, 'valorCefem')) ? fmtMoney(toNumber(getVal(props, 'valorCefem'))) : '—'],
         ['Quantidade comercializada', toNumber(getVal(props, 'quantidade')) ? fmtQty(toNumber(getVal(props, 'quantidade'))) : '—'],
         ['Total comercializado', toNumber(getVal(props, 'comercializado')) ? fmtQty(toNumber(getVal(props, 'comercializado'))) : '—'],
@@ -754,8 +758,7 @@
         if (!res.ok) throw new Error(`Falha ao carregar métricas (${res.status})`);
         const m = await res.json();
 
-        setMetric('metric-processos', fmtInt(m.plgs || 0));
-        setMetric('metric-cefem-sum', fmtMoney(m.soma_ValorRecolhido || 0));
+        setMetric('metric-processos-total', fmtInt(m.processos_minerarios_total || 0));
         setMetric('metric-comercializado', fmtQty(m.soma_comercializado || 0));
         setMetric('metric-tem-cefem', fmtInt(m.plgs_com_cefem || 0));
         setMetric('metric-apa', fmtInt(m.plgs_com_cefem_na_apa || 0));
@@ -859,6 +862,23 @@
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
+    const stopMapClickSelectors = [
+      '.sidebar',
+      '.legend-floating',
+      '.topbar',
+      '.autocomplete'
+    ];
+
+    stopMapClickSelectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(el => {
+        ['mousedown', 'mouseup', 'click', 'dblclick', 'pointerdown', 'touchstart'].forEach(evt => {
+          el.addEventListener(evt, (e) => {
+            e.stopPropagation();
+          });
+        });
+      });
+    });
+
     function playIntroCamera() {
       if (introHasPlayed) return;
       introHasPlayed = true;
@@ -899,7 +919,7 @@
     }
 
     function searchGlobalIndex(term, fieldMode) {
-      if (!Array.isArray(globalIndex)) return [];
+      if (!Array.isArray(globalIndex) || !globalIndex.length) return [];
       return globalIndex.filter(item => matchesQuery(item, term, fieldMode)).slice(0, 50);
     }
 
@@ -917,33 +937,40 @@
       return ranked.map(item => ({ item }));
     }
 
-    function normalizeForSearch(obj) {
-      return {
-        nome: normalizeText(getVal(obj, 'nome')),
-        cnpjText: normalizeText(getVal(obj, 'cnpj')),
-        cnpjDigits: normalizeCNPJ(getVal(obj, 'cnpj')),
-        processo: normalizeText(getVal(obj, 'processo')),
-        municipio: normalizeText(getVal(obj, 'municipio')),
-        searchText: normalizeText(getVal(obj, 'searchText'))
-      };
-    }
-
     function matchesQuery(props, term, fieldMode) {
-      const f = normalizeForSearch(props);
+      const nome = normalizeText(getVal(props, 'nome'));
+      const cnpjRaw = String(getVal(props, 'cnpj') || '');
+      const cnpjText = normalizeText(cnpjRaw);
+      const cnpjDigits = normalizeCNPJ(cnpjRaw);
+      const processo = normalizeText(getVal(props, 'processo'));
+      const municipio = normalizeText(getVal(props, 'municipio'));
+      const substancias = normalizeText(getVal(props, 'substancias'));
+      const searchText = normalizeText(getVal(props, 'searchText'));
       const termText = normalizeText(term);
       const termDigits = normalizeCNPJ(term);
 
-      if (fieldMode === 'nome') return f.nome.includes(termText);
-      if (fieldMode === 'cnpj') return f.cnpjDigits.includes(termDigits) || f.cnpjText.includes(termText);
-      if (fieldMode === 'processo') return f.processo.includes(termText);
+      if (!termText && !termDigits) return false;
+
+      if (fieldMode === 'nome') {
+        return nome.includes(termText);
+      }
+
+      if (fieldMode === 'cnpj') {
+        return termDigits ? cnpjDigits.includes(termDigits) : cnpjText.includes(termText);
+      }
+
+      if (fieldMode === 'processo') {
+        return processo.includes(termText);
+      }
 
       return (
-        f.nome.includes(termText) ||
-        f.processo.includes(termText) ||
-        f.municipio.includes(termText) ||
-        f.searchText.includes(termText) ||
-        f.cnpjText.includes(termText) ||
-        (termDigits && f.cnpjDigits.includes(termDigits))
+        nome.includes(termText) ||
+        processo.includes(termText) ||
+        municipio.includes(termText) ||
+        substancias.includes(termText) ||
+        searchText.includes(termText) ||
+        (termDigits && cnpjDigits.includes(termDigits)) ||
+        cnpjText.includes(termText)
       );
     }
 
@@ -1033,7 +1060,17 @@
     function renderAutocomplete(term = '') {
       const fieldMode = $('search-field').value;
       const box = $('autocomplete-list');
-      const suggestions = getSuggestions(term, fieldMode);
+      const trimmed = (term || '').trim();
+
+      if (!trimmed) {
+        autocompleteItems = [];
+        autocompleteActive = -1;
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+
+      const suggestions = getSuggestions(trimmed, fieldMode);
       autocompleteItems = suggestions;
       autocompleteActive = -1;
 
@@ -1075,13 +1112,46 @@
       $('autocomplete-list').style.display = 'none';
     }
 
-    function chooseAutocomplete(index) {
-      const entry = autocompleteItems[index];
-      if (!entry) return;
-      const item = entry.item;
-      $('search-input').value = safe(getVal(item, 'nome') || getVal(item, 'processo'));
-      closeAutocomplete();
-      runSearch(item);
+    function getLeftPadding() {
+      return window.innerWidth <= 820 ? 24 : 315;
+    }
+
+    function getTopPadding() {
+      return window.innerWidth <= 820 ? 120 : 95;
+    }
+
+    function zoomToFeature(feature) {
+      const coords = feature.geometry?.coordinates;
+      if (!coords) return;
+
+      const bounds = new mapboxgl.LngLatBounds();
+
+      const expandCoords = (arr) => {
+        if (!Array.isArray(arr)) return;
+        if (typeof arr[0] === 'number' && typeof arr[1] === 'number') {
+          bounds.extend(arr);
+          return;
+        }
+        arr.forEach(expandCoords);
+      };
+
+      expandCoords(coords);
+
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, {
+          padding: {
+            top: getTopPadding(),
+            right: 50,
+            bottom: 50,
+            left: getLeftPadding()
+          },
+          duration: 1800,
+          maxZoom: 14,
+          pitch: SEARCH_CAMERA.pitch,
+          bearing: SEARCH_CAMERA.bearing,
+          essential: true
+        });
+      }
     }
 
     function openPopupAtCoords(lng, lat, props) {
@@ -1091,24 +1161,55 @@
         .addTo(map);
     }
 
+    function chooseAutocomplete(index) {
+      const entry = autocompleteItems[index];
+      if (!entry) return;
+
+      const item = entry.item;
+      $('search-input').value = safe(getVal(item, 'nome') || getVal(item, 'processo'));
+      closeAutocomplete();
+
+      activeSearchKeys = [String(getVal(item, 'processo') || '')].filter(Boolean);
+      applyMapState();
+
+      const localMatch = collectLoadedFeatures().find(
+        f => getProcesso(f.properties || {}) === getProcesso(item)
+      );
+
+      if (localMatch) {
+        zoomToFeature(localMatch);
+        const popupProps = getPropsFromIndexOrFeature(localMatch.properties || {});
+        const lng = getVal(popupProps, 'lng');
+        const lat = getVal(popupProps, 'lat');
+
+        if (lng != null && lat != null) {
+          openPopupAtCoords(Number(lng), Number(lat), popupProps);
+        }
+        return;
+      }
+
+      const lng = getVal(item, 'lng');
+      const lat = getVal(item, 'lat');
+
+      if (lng != null && lat != null) {
+        map.flyTo({
+          center: [Number(lng), Number(lat)],
+          zoom: 13,
+          pitch: SEARCH_CAMERA.pitch,
+          bearing: SEARCH_CAMERA.bearing,
+          duration: 1800,
+          essential: true
+        });
+
+        openPopupAtCoords(Number(lng), Number(lat), item);
+      }
+    }
+
     function runSearch(preselectedItem = null) {
       if (preselectedItem) {
-        const props = preselectedItem.properties || preselectedItem;
-        activeSearchKeys = [String(getVal(props, 'processo') || '')].filter(Boolean);
-        applyMapState();
-
-        const localMatch = collectLoadedFeatures().find(
-          f => getProcesso(f.properties || {}) === getProcesso(props)
-        );
-
-        if (localMatch) {
-          zoomToFeature(localMatch);
-          const popupProps = getPropsFromIndexOrFeature(localMatch.properties || {});
-          const lng = getVal(popupProps, 'lng');
-          const lat = getVal(popupProps, 'lat');
-          if (lng != null && lat != null) {
-            openPopupAtCoords(Number(lng), Number(lat), popupProps);
-          }
+        const idx = autocompleteItems.findIndex(x => getProcesso(x.item) === getProcesso(preselectedItem));
+        if (idx >= 0) {
+          chooseAutocomplete(idx);
         }
         return;
       }
@@ -1122,33 +1223,33 @@
         return;
       }
 
-      const localResults = searchLoadedFeatures(term, fieldMode);
-      if (localResults.length) {
-        activeSearchKeys = localResults
-          .map(f => String(getVal(f.properties || {}, 'processo') || ''))
-          .filter(Boolean);
-
-        applyMapState();
-
-        if (localResults.length === 1) {
-          zoomToFeature(localResults[0]);
-          const popupProps = getPropsFromIndexOrFeature(localResults[0].properties || {});
-          const lng = getVal(popupProps, 'lng');
-          const lat = getVal(popupProps, 'lat');
-          if (lng != null && lat != null) {
-            openPopupAtCoords(Number(lng), Number(lat), popupProps);
-          }
-        }
-        return;
-      }
-
       const globalResults = searchGlobalIndex(term, fieldMode);
+
       if (globalResults.length) {
         activeSearchKeys = globalResults
           .map(item => String(getVal(item, 'processo') || ''))
           .filter(Boolean);
 
         applyMapState();
+
+        if (globalResults.length === 1) {
+          const item = globalResults[0];
+          const lng = getVal(item, 'lng');
+          const lat = getVal(item, 'lat');
+
+          if (lng != null && lat != null) {
+            map.flyTo({
+              center: [Number(lng), Number(lat)],
+              zoom: 13,
+              pitch: SEARCH_CAMERA.pitch,
+              bearing: SEARCH_CAMERA.bearing,
+              duration: 1800,
+              essential: true
+            });
+
+            openPopupAtCoords(Number(lng), Number(lat), item);
+          }
+        }
         return;
       }
 
@@ -1344,14 +1445,12 @@
       closeAutocomplete();
       updateToggleUI();
       applyMapState();
-      renderAutocomplete($('search-input').value || '');
     });
 
     $('toggle-tem-cefem').addEventListener('click', () => {
       filterState.temCefem = !filterState.temCefem;
       updateToggleUI();
       applyMapState();
-      renderAutocomplete($('search-input').value || '');
     });
 
     $('toggle-layer-plgs-geral').addEventListener('change', (e) => {
@@ -1361,14 +1460,12 @@
       }
       updateToggleUI();
       applyMapState();
-      renderAutocomplete($('search-input').value || '');
     });
 
     $('toggle-layer-plgs-cfem').addEventListener('change', (e) => {
       filterState.temCefem = e.target.checked;
       updateToggleUI();
       applyMapState();
-      renderAutocomplete($('search-input').value || '');
     });
 
     $('toggle-layer-apa').addEventListener('change', (e) => {
@@ -1389,8 +1486,8 @@
       renderAutocomplete(e.target.value || '');
     });
 
-    $('search-input').addEventListener('focus', (e) => {
-      renderAutocomplete(e.target.value || '');
+    $('search-input').addEventListener('focus', () => {
+      closeAutocomplete();
     });
 
     $('search-input').addEventListener('keydown', (e) => {
